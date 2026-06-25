@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopScan Pro — Diagnóstico IA para Shopify</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #fff; min-height: 100vh; }
+    .app { max-width: 480px; margin: 0 auto; padding: 24px 12px 40px; }
+    .header { padding: 0 8px 20px; }
+    .header h1 { font-size: 28px; font-weight: 700; color: #fff; }
+    .header p { color: #4fa8ff; font-size: 15px; margin-top: 3px; }
+    .card { background: #161b22; border-radius: 16px; overflow: hidden; border: 1px solid #21262d; }
+    .card-top { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #21262d; }
+    .card-brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon { width: 32px; height: 32px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .brand-name { font-weight: 700; font-size: 14px; color: #fff; }
+    .card-status { text-align: right; }
+    .card-status .shop { font-size: 12px; color: #8b949e; }
+    .card-status .done { font-size: 12px; color: #3fb950; }
+    .scan-input { padding: 12px 16px; border-bottom: 1px solid #21262d; display: flex; gap: 8px; }
+    .scan-input input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 9px 12px; color: #fff; font-size: 13px; outline: none; }
+    .scan-input input:focus { border-color: #2563eb; }
+    .scan-input input::placeholder { color: #484f58; }
+    .btn-scan { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn-scan:hover { background: #1d4ed8; }
+    .btn-scan:disabled { background: #30363d; color: #484f58; cursor: not-allowed; }
+    .optional-row { padding: 8px 16px 12px; border-bottom: 1px solid #21262d; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .optional-row label { font-size: 11px; color: #8b949e; white-space: nowrap; }
+    .optional-row input { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 5px 10px; color: #fff; font-size: 12px; outline: none; min-width: 0; }
+    .optional-row input:focus { border-color: #2563eb; }
+    .optional-row input::placeholder { color: #484f58; }
+    .body-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .score-section { padding: 20px 14px; border-right: 1px solid #21262d; display: flex; flex-direction: column; align-items: center; }
+    .donut-wrap { position: relative; width: 130px; height: 130px; margin-bottom: 10px; }
+    .donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+    .donut-number { font-size: 34px; font-weight: 700; color: #fff; line-height: 1; }
+    .donut-label { font-size: 11px; color: #8b949e; margin-top: 2px; }
+    .estado-badge { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+    .estado-bueno { color: #3fb950; }
+    .estado-mejorable { color: #f0a500; }
+    .estado-critico { color: #f85149; }
+    .issues-count { font-size: 12px; color: #8b949e; margin-bottom: 14px; }
+    .bars { width: 100%; }
+    .bar-row { display: flex; align-items: center; margin-bottom: 9px; gap: 6px; }
+    .bar-label { font-size: 11px; color: #8b949e; width: 72px; flex-shrink: 0; }
+    .bar-track { flex: 1; height: 5px; background: #21262d; border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+    .bar-value { font-size: 11px; font-weight: 600; width: 22px; text-align: right; flex-shrink: 0; }
+    .issues-section { padding: 14px 12px; }
+    .issues-title { font-size: 10px; font-weight: 600; color: #8b949e; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+    .issue-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+    .issue-icon { width: 30px; height: 30px; border-radius: 7px; background: #1f2937; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 15px; }
+    .issue-text { flex: 1; min-width: 0; }
+    .issue-tipo { font-size: 12px; color: #e6edf3; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .issue-cat { font-size: 10px; color: #8b949e; margin-top: 1px; }
+    .sev-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 3px; }
+    .sev-critico { background: #3d1c1c; color: #f85149; }
+    .sev-alerta { background: #2d2008; color: #f0a500; }
+    .ai-box { margin: 0 14px 14px; background: #1c2a3a; border-radius: 10px; padding: 11px 13px; display: flex; gap: 10px; }
+    .ai-dot { width: 22px; height: 22px; background: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 12px; }
+    .ai-text { font-size: 12px; color: #cdd9e5; line-height: 1.55; }
+    .ai-text strong { color: #4fa8ff; }
+    .ai-highlight { color: #3fb950; font-weight: 700; }
+    .card-footer { padding: 10px 16px; border-top: 1px solid #21262d; display: flex; justify-content: space-between; align-items: center; }
+    .footer-left { font-size: 11px; color: #484f58; }
+    .footer-right { font-size: 12px; color: #4fa8ff; cursor: pointer; text-decoration: none; }
+    .checklist { padding: 22px 8px 16px; }
+    .check-item { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .check-circle { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #4fa8ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #4fa8ff; font-size: 13px; }
+    .check-text { font-size: 15px; color: #e6edf3; }
+    .btn-demo { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; text-align: center; font-size: 15px; font-weight: 600; color: #4fa8ff; cursor: pointer; width: 100%; margin-top: 4px; }
+    .btn-demo:hover { background: #1c2631; }
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; gap: 12px; }
+    .spinner { width: 34px; height: 34px; border: 3px solid #21262d; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 13px; color: #8b949e; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px 20px; gap: 10px; }
+    .empty-icon { font-size: 40px; opacity: 0.2; }
+    .empty-state p { font-size: 13px; color: #484f58; text-align: center; line-height: 1.6; }
+    .error-box { margin: 12px 16px; background: #2d1515; border-radius: 10px; padding: 12px 14px; font-size: 13px; color: #f85149; line-height: 1.5; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <h1>ShopScan Pro</h1>
+    <p>Diagnóstico IA para Shopify</p>
+  </div>
+
+  <div class="card">
+    <div class="card-top">
+      <div class="card-brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <div class="brand-name">ShopScan Pro</div>
+        </div>
+      </div>
+      <div class="card-status">
+        <div class="shop" id="shop-display">—</div>
+        <div class="done" id="status-display">Listo para escanear</div>
+      </div>
+    </div>
+
+    <div class="scan-input">
+      <input type="text" id="url-input" placeholder="https://mitienda.myshopify.com" />
+      <button class="btn-scan" id="btn-scan" onclick="runScan()">🔍 Escanear</button>
+    </div>
+
+    <div class="optional-row">
+      <label>Shop:</label>
+      <input type="text" id="shop-input" placeholder="mitienda.myshopify.com" style="flex:1" />
+      <label>Token:</label>
+      <input type="text" id="token-input" placeholder="shpua_..." style="flex:2" />
+    </div>
+
+    <div id="main-content">
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>Ingresa la URL de tu tienda<br>y haz clic en Escanear</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-circle">✓</div>
+      <span class="check-text">Score SEO, CRO, velocidad y UX</span>
+    </div>
+    <div class="check-item">
+      <div class="check-circle">✓</div>
+      <span class="check-text">Issues críticos detectados por IA</span>
+    </div>
+    <div class="check-item">
+      <div class="check-circle">✓</div>
+      <span class="check-text">Roadmap de optimización priorizado</span>
+    </div>
+  </div>
+
+  <button class="btn-demo" onclick="loadDemo()">▶ Ver Demo de ShopScan Pro</button>
+
+</div>
+
+<script>
+const API_BASE = 'https://shopscanproz.onrender.com';
+
+const DEMO_DATA = {
+  url: 'https://demo-tienda.myshopify.com',
+  scoreGlobal: 58,
+  estado: 'MEJORABLE',
+  issuesCriticos: 4,
+  categorias: { SEO: 61, Conversion: 48, Velocidad: 74, UX_CRO: 55 },
+  issues: [
+    { tipo: 'LCP > 4.2s', categoria: 'Velocidad', severidad: 'CRÍTICO' },
+    { tipo: 'Meta descripción faltante', categoria: 'SEO', severidad: 'CRÍTICO' },
+    { tipo: 'Checkout a 3 pasos', categoria: 'CRO', severidad: 'ALERTA' },
+    { tipo: 'Imágenes sin alt text', categoria: 'Performance', severidad: 'ALERTA' }
+  ],
+  metricas: { lcp: 4.2, fcp: 2.1, cls: 0.05, tbt: 120 }
+};
+
+let donutChart = null;
+
+function getBarColor(v) { return v >= 70 ? '#3fb950' : v >= 50 ? '#f0a500' : '#f85149'; }
+function getEstadoClass(e) { return e === 'BUENO' ? 'estado-bueno' : e === 'MEJORABLE' ? 'estado-mejorable' : 'estado-critico'; }
+function getIssueIcon(cat) {
+  return { 'Velocidad': '⚡', 'SEO': '🔍', 'CRO': '🛒', 'Performance': '🖼', 'UX': '📱' }[cat] || '⚠️';
+}
+
+function drawDonut(score, estado) {
+  const canvas = document.getElementById('donut-canvas');
+  if (!canvas) return;
+  if (donutChart) { donutChart.destroy(); donutChart = null; }
+  const color = estado === 'BUENO' ? '#3fb950' : estado === 'MEJORABLE' ? '#f0a500' : '#f85149';
+  donutChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      datasets: [{ data: [score, 100 - score], backgroundColor: [color, '#21262d'], borderWidth: 0, borderRadius: 3 }]
+    },
+    options: {
+      cutout: '76%',
+      animation: { duration: 900 },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      events: []
+    }
+  });
+}
+
+function renderBar(label, value) {
+  return `
+    <div class="bar-row">
+      <span class="bar-label">${label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${value}%;background:${getBarColor(value)}"></div></div>
+      <span class="bar-value" style="color:${getBarColor(value)}">${value}</span>
+    </div>`;
+}
+
+function generateAIMessage(data) {
+  const critIssues = (data.issues || []).filter(i => i.severidad === 'CRÍTICO');
+  const potencial = Math.round((100 - data.scoreGlobal) * 0.3);
+  if (critIssues.length === 0) {
+    return `Tu tienda tiene buen rendimiento con score <strong style="color:#4fa8ff">${data.scoreGlobal}/100</strong>. Sigue optimizando para seguir creciendo.`;
+  }
+  return `Corregir <em>${critIssues[0].tipo}</em> y los ${critIssues.length} issues críticos puede aumentar tu conversión un <span class="ai-highlight">+${potencial}%</span> estimado. Roadmap generado: ${critIssues.length + 1} semanas.`;
+}
+
+function renderResult(data) {
+  const cats = data.categorias;
+  const issues = data.issues || [];
+  const critCount = issues.filter(i => i.severidad === 'CRÍTICO').length;
+
+  document.getElementById('shop-display').textContent = data.url.replace('https://', '').substring(0, 26);
+  document.getElementById('status-display').textContent = 'Escaneo completado';
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="body-grid">
+      <div class="score-section">
+        <div class="donut-wrap">
+          <canvas id="donut-canvas" width="130" height="130"></canvas>
+          <div class="donut-center">
+            <div class="donut-number">${data.scoreGlobal}</div>
+            <div class="donut-label">SCORE</div>
+          </div>
+        </div>
+        <div class="estado-badge ${getEstadoClass(data.estado)}">${data.estado}</div>
+        <div class="issues-count">${critCount} issue${critCount !== 1 ? 's' : ''} crítico${critCount !== 1 ? 's' : ''}</div>
+        <div class="bars">
+          ${renderBar('SEO', cats.SEO)}
+          ${renderBar('Conversión', cats.Conversion)}
+          ${renderBar('Velocidad', cats.Velocidad)}
+          ${renderBar('UX & CRO', cats.UX_CRO)}
+        </div>
+      </div>
+      <div class="issues-section">
+        <div class="issues-title">Issues detectados</div>
+        ${issues.slice(0, 5).map(i => `
+          <div class="issue-item">
+            <div class="issue-icon">${getIssueIcon(i.categoria)}</div>
+            <div class="issue-text">
+              <div class="issue-tipo">${i.tipo}</div>
+              <div class="issue-cat">${i.categoria}</div>
+            </div>
+            <span class="sev-badge ${i.severidad === 'CRÍTICO' ? 'sev-critico' : 'sev-alerta'}">${i.severidad}</span>
+          </div>
+        `).join('')}
+        ${issues.length === 0 ? '<div style="font-size:12px;color:#3fb950;margin-top:8px">Sin issues detectados ✓</div>' : ''}
+      </div>
+    </div>
+    <div class="ai-box">
+      <div class="ai-dot">✦</div>
+      <div class="ai-text"><strong>IA:</strong> ${generateAIMessage(data)}</div>
+    </div>
+    <div class="card-footer">
+      <span class="footer-left">Shopify · Diagnóstico & Optimización IA</span>
+      <a class="footer-right" href="#" onclick="window.print()">Ver reporte →</a>
+    </div>
+  `;
+
+  setTimeout(() => drawDonut(data.scoreGlobal, data.estado), 80);
+}
+
+async function runScan() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { document.getElementById('url-input').focus(); return; }
+
+  const shop = document.getElementById('shop-input').value.trim();
+  const token = document.getElementById('token-input').value.trim();
+
+  document.getElementById('btn-scan').disabled = true;
+  document.getElementById('status-display').textContent = 'Escaneando...';
+  document.getElementById('shop-display').textContent = url.replace('https://', '').substring(0, 26);
+  document.getElementById('main-content').innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Analizando tu tienda...</div>
+    </div>`;
+
+  try {
+    let apiUrl = `${API_BASE}/api/score?url=${encodeURIComponent(url)}`;
+    if (shop) apiUrl += `&shop=${encodeURIComponent(shop)}`;
+    if (token) apiUrl += `&token=${encodeURIComponent(token)}`;
+
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error(`Error ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderResult(data);
+  } catch (err) {
+    document.getElementById('status-display').textContent = 'Error al escanear';
+    document.getElementById('main-content').innerHTML = `
+      <div class="error-box">⚠️ ${err.message}. Verifica la URL e intenta de nuevo.</div>
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>Ingresa la URL de tu tienda<br>y haz clic en Escanear</p>
+      </div>`;
+  } finally {
+    document.getElementById('btn-scan').disabled = false;
+  }
+}
+
+function loadDemo() {
+  document.getElementById('url-input').value = DEMO_DATA.url;
+  renderResult(DEMO_DATA);
+}
+
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runScan();
+});
+</script>
+</body>
+</html>
