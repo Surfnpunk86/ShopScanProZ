@@ -83,32 +83,36 @@ const { shop, token } = req.query;
 
 if (shop && token) {
   try {
+    const SHOPIFY_API_VERSION = '2024-10';
     const shopifyRes = await fetch(
-      `https://shopscanproz.onrender.com/api/shopify/products?shop=${shop}&token=${token}`
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=50`,
+      { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } }
     );
     const shopifyData = await shopifyRes.json();
+    const products = shopifyData.products || [];
 
-    if (shopifyData.productsMissingDescription > 0) {
-      const penalidad = Math.min(30, shopifyData.productsMissingDescription * 5);
-      conversion -= penalidad;
+    const sinDescripcion = products.filter(p => !p.body_html || p.body_html.trim().length < 50).length;
+    const sinImagen = products.filter(p => !p.images || p.images.length === 0).length;
+
+    if (sinDescripcion > 0) {
+      conversion -= Math.min(30, sinDescripcion * 5);
       issues.push({
-        tipo: `${shopifyData.productsMissingDescription} productos sin descripción`,
+        tipo: `${sinDescripcion} productos sin descripción`,
         categoria: 'CRO',
-        severidad: shopifyData.productsMissingDescription > 3 ? 'CRÍTICO' : 'ALERTA'
+        severidad: sinDescripcion > 3 ? 'CRÍTICO' : 'ALERTA'
       });
     }
 
-    if (shopifyData.productsWithoutImages > 0) {
-      const penalidad = Math.min(25, shopifyData.productsWithoutImages * 5);
-      conversion -= penalidad;
+    if (sinImagen > 0) {
+      conversion -= Math.min(25, sinImagen * 5);
       issues.push({
-        tipo: `${shopifyData.productsWithoutImages} productos sin imagen`,
+        tipo: `${sinImagen} productos sin imagen`,
         categoria: 'CRO',
         severidad: 'CRÍTICO'
       });
     }
 
-    if (shopifyData.totalProducts === 0) {
+    if (products.length === 0) {
       conversion -= 20;
       issues.push({
         tipo: 'Tienda sin productos publicados',
@@ -118,10 +122,12 @@ if (shop && token) {
     }
 
   } catch (e) {
-    // Si Shopify falla, usamos valor base
+    console.log('Error Shopify en score:', e.message);
     conversion = 70;
   }
 }
+
+conversion = Math.max(0, conversion);
 
 conversion = Math.max(0, conversion);
     const ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0) - (!tieneViewport ? 25 : 0));
