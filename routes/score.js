@@ -76,9 +76,8 @@ router.get('/', async (req, res) => {
       issues.push({ tipo: `${imgSinAlt} imágenes sin alt text`, categoria: 'SEO', severidad: 'ALERTA' });
     }
 
-// --- PASO 4: Conversión con datos reales de Shopify ---
+// --- Conversión con datos reales de Shopify ---
 let conversion = 100;
-
 const { shop, token } = req.query;
 
 if (shop && token) {
@@ -94,31 +93,17 @@ if (shop && token) {
     const sinDescripcion = products.filter(p => !p.body_html || p.body_html.trim().length < 50).length;
     const sinImagen = products.filter(p => !p.images || p.images.length === 0).length;
 
-    if (sinDescripcion > 0) {
-      conversion -= Math.min(30, sinDescripcion * 5);
-      issues.push({
-        tipo: `${sinDescripcion} productos sin descripción`,
-        categoria: 'CRO',
-        severidad: sinDescripcion > 3 ? 'CRÍTICO' : 'ALERTA'
-      });
-    }
-
-    if (sinImagen > 0) {
-      conversion -= Math.min(25, sinImagen * 5);
-      issues.push({
-        tipo: `${sinImagen} productos sin imagen`,
-        categoria: 'CRO',
-        severidad: 'CRÍTICO'
-      });
-    }
-
     if (products.length === 0) {
       conversion -= 20;
-      issues.push({
-        tipo: 'Tienda sin productos publicados',
-        categoria: 'CRO',
-        severidad: 'CRÍTICO'
-      });
+      issues.push({ tipo: 'Tienda sin productos publicados', categoria: 'CRO', severidad: 'CRÍTICO' });
+    }
+    if (sinDescripcion > 0) {
+      conversion -= Math.min(30, sinDescripcion * 5);
+      issues.push({ tipo: `${sinDescripcion} productos sin descripción`, categoria: 'CRO', severidad: sinDescripcion > 3 ? 'CRÍTICO' : 'ALERTA' });
+    }
+    if (sinImagen > 0) {
+      conversion -= Math.min(25, sinImagen * 5);
+      issues.push({ tipo: `${sinImagen} productos sin imagen`, categoria: 'CRO', severidad: 'CRÍTICO' });
     }
 
   } catch (e) {
@@ -126,7 +111,7 @@ if (shop && token) {
     conversion = 70;
   }
 }
-
+conversion = Math.max(0, conversion);
 conversion = Math.max(0, conversion);
 
 conversion = Math.max(0, conversion);
