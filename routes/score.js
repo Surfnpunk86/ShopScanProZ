@@ -11,13 +11,12 @@ router.get('/', async (req, res) => {
     const psRes = await fetch(psUrl);
     const psData = await psRes.json();
 
-    const audits = psData.lighthouseResult?.audits || {};
-    const categories = psData.lighthouseResult?.categories || {};
-
-    const lcp = (audits['largest-contentful-paint']?.numericValue || 0) / 1000;
-    const fcp = (audits['first-contentful-paint']?.numericValue || 0) / 1000;
-    const cls  = audits['cumulative-layout-shift']?.numericValue || 0;
-    const tbt  = audits['total-blocking-time']?.numericValue || 0;
+    const audits   = psData.lighthouseResult?.audits || {};
+    const cats     = psData.lighthouseResult?.categories || {};
+    const lcp      = (audits['largest-contentful-paint']?.numericValue || 0) / 1000;
+    const fcp      = (audits['first-contentful-paint']?.numericValue || 0) / 1000;
+    const cls      = audits['cumulative-layout-shift']?.numericValue || 0;
+    const tbt      = audits['total-blocking-time']?.numericValue || 0;
 
     // --- PASO 2: Score Velocidad ---
     let velocidad = 100;
@@ -40,30 +39,46 @@ router.get('/', async (req, res) => {
     }
 
     // --- PASO 3: SEO scan (usa tu ruta existente) ---
-    const seoRes = await fetch(`https://shopscanproz.onrender.com/api/seo-scan?url=${encodeURIComponent(url)}`);
+    const seoRes  = await fetch(`https://shopscanproz.onrender.com/api/seo-scan?url=${encodeURIComponent(url)}`);
     const seoData = await seoRes.json();
 
+    // Estos nombres vienen exactamente de tu seo-scan.js
+    const tieneTitle       = !!seoData.title;
+    const tieneMeta        = !!seoData.metaDescription;
+    const tieneH1          = seoData.h1Count >= 1;
+    const tieneViewport    = seoData.checks?.find(c => c.name === 'Meta viewport (mobile)')?.status === 'pass';
+    const tieneOG          = seoData.checks?.find(c => c.name === 'Open Graph tags')?.status === 'pass';
+    const imgSinAlt        = seoData.images?.withoutAlt || 0;
+
     let seo = 100;
-    if (!seoData.metaDescription) {
-      seo -= 25;
-      issues.push({ tipo: 'Meta descripción faltante', categoria: 'SEO', severidad: 'CRÍTICO' });
-    }
-    if (!seoData.title) {
+    if (!tieneTitle) {
       seo -= 20;
       issues.push({ tipo: 'Title tag faltante', categoria: 'SEO', severidad: 'CRÍTICO' });
     }
-    if (!seoData.h1) {
+    if (!tieneMeta) {
+      seo -= 25;
+      issues.push({ tipo: 'Meta descripción faltante', categoria: 'SEO', severidad: 'CRÍTICO' });
+    }
+    if (!tieneH1) {
       seo -= 15;
       issues.push({ tipo: 'H1 faltante', categoria: 'SEO', severidad: 'ALERTA' });
     }
-    if (seoData.imagesWithoutAlt > 0) {
-      seo -= Math.min(20, seoData.imagesWithoutAlt * 4);
-      issues.push({ tipo: `${seoData.imagesWithoutAlt} imágenes sin alt`, categoria: 'SEO', severidad: 'ALERTA' });
+    if (!tieneViewport) {
+      seo -= 15;
+      issues.push({ tipo: 'Sin meta viewport (no mobile-friendly)', categoria: 'SEO', severidad: 'CRÍTICO' });
+    }
+    if (!tieneOG) {
+      seo -= 10;
+      issues.push({ tipo: 'Sin Open Graph tags', categoria: 'SEO', severidad: 'ALERTA' });
+    }
+    if (imgSinAlt > 0) {
+      seo -= Math.min(15, imgSinAlt * 3);
+      issues.push({ tipo: `${imgSinAlt} imágenes sin alt text`, categoria: 'SEO', severidad: 'ALERTA' });
     }
 
-    // --- PASO 4: Conversión y UX (base hasta conectar Shopify) ---
-    const conversion = 70;
-    const ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0));
+    // --- PASO 4: Conversión y UX ---
+    const conversion = 70; // base hasta conectar Shopify
+    const ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0) - (!tieneViewport ? 25 : 0));
 
     // --- PASO 5: Score global ponderado ---
     const scoreGlobal = Math.round(
