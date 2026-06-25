@@ -20,7 +20,8 @@ app.get('/', (req, res) => {
     endpoints: [
       'GET /api/pagespeed?url=https://example.com',
       'GET /api/seo-scan?url=https://example.com',
-      'GET /api/shopify/products (requires Shopify credentials)'
+      'GET /api/shopify/products (requires Shopify credentials)',
+      'GET /api/score?url=https://example.com'
     ]
   });
 });
@@ -30,6 +31,5 @@ app.use('/api/seo-scan', seoScanRoute);
 app.use('/api/shopify', shopifyRoute);
 app.use('/api/score', require('./routes/score'));
 
-app.listen(PORT, () => {
-  console.log(`ShopScan Pro API running on port ${PORT}`);
-});
+// ← Esta línea es la que faltaba
+app.listen(PORT, () => console.log(`ShopScan Pro corriendo en puerto ${PORT}`));
