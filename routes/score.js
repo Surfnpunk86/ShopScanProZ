@@ -3,12 +3,10 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'Falta el parámetro ?url=' });
+  if (!url) return res.status(400).json({ error: 'Falta el parámetro ?url=https://tutienda.com' });
 
   try {
-    // 1. Llamar a PageSpeed
-    const fetch = (await import('node-fetch')).default;
-
+    // --- PASO 1: PageSpeed ---
     const psUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&key=${process.env.PAGESPEED_API_KEY}&strategy=mobile`;
     const psRes = await fetch(psUrl);
     const psData = await psRes.json();
@@ -18,11 +16,10 @@ router.get('/', async (req, res) => {
 
     const lcp = (audits['largest-contentful-paint']?.numericValue || 0) / 1000;
     const fcp = (audits['first-contentful-paint']?.numericValue || 0) / 1000;
-    const cls = audits['cumulative-layout-shift']?.numericValue || 0;
-    const tbt = audits['total-blocking-time']?.numericValue || 0;
-    const perfScore = Math.round((categories?.performance?.score || 0) * 100);
+    const cls  = audits['cumulative-layout-shift']?.numericValue || 0;
+    const tbt  = audits['total-blocking-time']?.numericValue || 0;
 
-    // 2. Calcular score de Velocidad
+    // --- PASO 2: Score Velocidad ---
     let velocidad = 100;
     const issues = [];
 
@@ -33,18 +30,16 @@ router.get('/', async (req, res) => {
       velocidad -= 20;
       issues.push({ tipo: `LCP ${lcp.toFixed(1)}s mejorable`, categoria: 'Velocidad', severidad: 'ALERTA' });
     }
-
     if (cls > 0.25) {
       velocidad -= 20;
       issues.push({ tipo: 'Layout shift alto (CLS)', categoria: 'UX', severidad: 'CRÍTICO' });
     }
-
     if (tbt > 600) {
       velocidad -= 15;
       issues.push({ tipo: 'Tiempo de bloqueo alto (TBT)', categoria: 'UX', severidad: 'ALERTA' });
     }
 
-    // 3. Llamar a SEO scan
+    // --- PASO 3: SEO scan (usa tu ruta existente) ---
     const seoRes = await fetch(`https://shopscanproz.onrender.com/api/seo-scan?url=${encodeURIComponent(url)}`);
     const seoData = await seoRes.json();
 
@@ -66,35 +61,33 @@ router.get('/', async (req, res) => {
       issues.push({ tipo: `${seoData.imagesWithoutAlt} imágenes sin alt`, categoria: 'SEO', severidad: 'ALERTA' });
     }
 
-    // 4. Score de Conversión y UX (base, sin Shopify aún)
-    let conversion = 70; // base hasta conectar Shopify
-    let ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0));
+    // --- PASO 4: Conversión y UX (base hasta conectar Shopify) ---
+    const conversion = 70;
+    const ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0));
 
-    // 5. Score global (ponderado)
+    // --- PASO 5: Score global ponderado ---
     const scoreGlobal = Math.round(
-      velocidad * 0.25 +
-      seo * 0.25 +
-      conversion * 0.30 +
-      ux * 0.20
+      Math.max(0, velocidad) * 0.25 +
+      Math.max(0, seo)       * 0.25 +
+      conversion             * 0.30 +
+      ux                     * 0.20
     );
 
-    // 6. Etiqueta
     const estado = scoreGlobal >= 80 ? 'BUENO' : scoreGlobal >= 60 ? 'MEJORABLE' : 'CRÍTICO';
-    const issuesCriticos = issues.filter(i => i.severidad === 'CRÍTICO').length;
 
     res.json({
       url,
       scoreGlobal,
       estado,
-      issuesCriticos,
+      issuesCriticos: issues.filter(i => i.severidad === 'CRÍTICO').length,
       categorias: {
-        SEO: Math.max(0, seo),
+        SEO:        Math.max(0, seo),
         Conversion: conversion,
-        Velocidad: Math.max(0, velocidad),
-        UX_CRO: Math.max(0, ux)
+        Velocidad:  Math.max(0, velocidad),
+        UX_CRO:     ux
       },
       issues,
-      metricas: { lcp, fcp, cls, tbt, perfScore }
+      metricas: { lcp, fcp, cls, tbt }
     });
 
   } catch (error) {
