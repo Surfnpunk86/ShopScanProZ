@@ -1,49 +1,83 @@
 const express = require('express');
 const router = express.Router();
-
-/**
- * Shopify integration — base structure.
- *
- * To analyze a real client's store you need:
- *  1. A Shopify Partner account + Custom App (or Public App for multiple clients)
- *  2. The store's Admin API access token (OAuth flow for public apps,
- *     or a private/custom app token for single-store internal use)
- *  3. Scopes: read_products, read_themes, read_content, read_orders (as needed)
- *
- * Set these in your .env:
- *   SHOPIFY_API_KEY=
- *   SHOPIFY_API_SECRET=
- *   SHOPIFY_SCOPES=read_products,read_themes,read_content
- *   SHOPIFY_APP_URL=https://your-backend.onrender.com
- *
- * For a single internal store (LaFête analyzing its own dev store or a
- * client that gives you a Custom App token directly), you can skip OAuth
- * and just call the Admin API with a static token per request, e.g.:
- *
- *   GET /api/shopify/products?shop=mystore.myshopify.com&token=shpat_xxx
- */
+const crypto = require('crypto');
 
 const SHOPIFY_API_VERSION = '2024-10';
+const API_KEY    = process.env.SHOPIFY_API_KEY;
+const API_SECRET = process.env.SHOPIFY_API_SECRET;
+const SCOPES     = process.env.SHOPIFY_SCOPES || 'read_products,read_content,read_themes';
+const APP_URL    = process.env.SHOPIFY_APP_URL || 'https://shopscanproz.onrender.com';
+
+// Guardamos tokens en memoria (temporal — funciona para pruebas)
+const tokenStore = {};
 
 function shopifyHeaders(token) {
-  return {
-    'X-Shopify-Access-Token': token,
-    'Content-Type': 'application/json'
-  };
+  return { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
 }
 
-/**
- * GET /api/shopify/products?shop=mystore.myshopify.com&token=shpat_xxx
- * Returns basic product data for a quick catalog audit
- * (missing descriptions, images, alt text, etc.)
- */
+// ─── 1. INICIO DE OAUTH ───────────────────────────────────────────────────────
+// El dueño de la tienda visita esta URL para instalar la app
+// GET /api/shopify/auth?shop=mitienda.myshopify.com
+router.get('/auth', (req, res) => {
+  const { shop } = req.query;
+  if (!shop) return res.status(400).json({ error: 'Falta el parámetro ?shop=' });
+
+  const state = crypto.randomBytes(16).toString('hex');
+  const redirectUri = `${APP_URL}/api/shopify/callback`;
+  const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${API_KEY}&scope=${SCOPES}&redirect_uri=${redirectUri}&state=${state}`;
+
+  res.redirect(installUrl);
+});
+
+// ─── 2. CALLBACK DE OAUTH ─────────────────────────────────────────────────────
+// Shopify redirige aquí después de que el usuario acepta
+// GET /api/shopify/callback
+router.get('/callback', async (req, res) => {
+  const { shop, code } = req.query;
+  if (!shop || !code) return res.status(400).json({ error: 'Faltan parámetros de OAuth' });
+
+  try {
+    // Intercambiar code por access token
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: API_KEY, client_secret: API_SECRET, code })
+    });
+
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      return res.status(400).json({ error: 'No se pudo obtener el access token', detalle: tokenData });
+    }
+
+    // Guardar token (en memoria por ahora)
+    tokenStore[shop] = accessToken;
+
+    // Redirigir al usuario con su token para usar la API
+    res.json({
+      mensaje: '✅ Tienda conectada exitosamente',
+      shop,
+      accessToken,
+      ejemplos: {
+        productos: `${APP_URL}/api/shopify/products?shop=${shop}&token=${accessToken}`,
+        scoreCompleto: `${APP_URL}/api/score?url=https://${shop}&shop=${shop}&token=${accessToken}`
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: 'Error en OAuth callback', detalle: err.message });
+  }
+});
+
+// ─── 3. PRODUCTOS ─────────────────────────────────────────────────────────────
+// GET /api/shopify/products?shop=mitienda.myshopify.com&token=shpat_xxx
 router.get('/products', async (req, res) => {
   const { shop, token, limit = 50 } = req.query;
-
   if (!shop || !token) {
     return res.status(400).json({
-      error: 'Missing required query params: shop and token',
-      hint: 'shop = mystore.myshopify.com, token = Admin API access token from a Custom App'
+      error: 'Faltan parámetros: shop y token',
+      hint: `Primero conecta tu tienda en: ${APP_URL}/api/shopify/auth?shop=mitienda.myshopify.com`
     });
   }
 
@@ -78,22 +112,17 @@ router.get('/products', async (req, res) => {
       audit,
       fetchedAt: new Date().toISOString()
     });
+
   } catch (err) {
-    console.error('Shopify products error:', err);
-    res.status(500).json({ error: 'Failed to fetch Shopify products', details: err.message });
+    res.status(500).json({ error: 'Error al obtener productos', details: err.message });
   }
 });
 
-/**
- * GET /api/shopify/shop-info?shop=mystore.myshopify.com&token=shpat_xxx
- * Basic store metadata (plan, currency, domain, etc.)
- */
+// ─── 4. INFO DE LA TIENDA ─────────────────────────────────────────────────────
+// GET /api/shopify/shop-info?shop=mitienda.myshopify.com&token=shpat_xxx
 router.get('/shop-info', async (req, res) => {
   const { shop, token } = req.query;
-
-  if (!shop || !token) {
-    return res.status(400).json({ error: 'Missing required query params: shop and token' });
-  }
+  if (!shop || !token) return res.status(400).json({ error: 'Faltan parámetros: shop y token' });
 
   try {
     const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`;
@@ -106,9 +135,9 @@ router.get('/shop-info', async (req, res) => {
 
     const data = await response.json();
     res.json({ shop: data.shop, fetchedAt: new Date().toISOString() });
+
   } catch (err) {
-    console.error('Shopify shop-info error:', err);
-    res.status(500).json({ error: 'Failed to fetch shop info', details: err.message });
+    res.status(500).json({ error: 'Error al obtener info de tienda', details: err.message });
   }
 });
 
