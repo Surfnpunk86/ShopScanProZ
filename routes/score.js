@@ -76,8 +76,54 @@ router.get('/', async (req, res) => {
       issues.push({ tipo: `${imgSinAlt} imágenes sin alt text`, categoria: 'SEO', severidad: 'ALERTA' });
     }
 
-    // --- PASO 4: Conversión y UX ---
-    const conversion = 70; // base hasta conectar Shopify
+// --- PASO 4: Conversión con datos reales de Shopify ---
+let conversion = 100;
+
+const { shop, token } = req.query;
+
+if (shop && token) {
+  try {
+    const shopifyRes = await fetch(
+      `https://shopscanproz.onrender.com/api/shopify/products?shop=${shop}&token=${token}`
+    );
+    const shopifyData = await shopifyRes.json();
+
+    if (shopifyData.productsMissingDescription > 0) {
+      const penalidad = Math.min(30, shopifyData.productsMissingDescription * 5);
+      conversion -= penalidad;
+      issues.push({
+        tipo: `${shopifyData.productsMissingDescription} productos sin descripción`,
+        categoria: 'CRO',
+        severidad: shopifyData.productsMissingDescription > 3 ? 'CRÍTICO' : 'ALERTA'
+      });
+    }
+
+    if (shopifyData.productsWithoutImages > 0) {
+      const penalidad = Math.min(25, shopifyData.productsWithoutImages * 5);
+      conversion -= penalidad;
+      issues.push({
+        tipo: `${shopifyData.productsWithoutImages} productos sin imagen`,
+        categoria: 'CRO',
+        severidad: 'CRÍTICO'
+      });
+    }
+
+    if (shopifyData.totalProducts === 0) {
+      conversion -= 20;
+      issues.push({
+        tipo: 'Tienda sin productos publicados',
+        categoria: 'CRO',
+        severidad: 'CRÍTICO'
+      });
+    }
+
+  } catch (e) {
+    // Si Shopify falla, usamos valor base
+    conversion = 70;
+  }
+}
+
+conversion = Math.max(0, conversion);
     const ux = Math.max(0, 100 - (cls > 0.25 ? 30 : 0) - (tbt > 600 ? 20 : 0) - (!tieneViewport ? 25 : 0));
 
     // --- PASO 5: Score global ponderado ---
