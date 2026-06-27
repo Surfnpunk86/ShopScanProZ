@@ -13,7 +13,7 @@
     .header h1 { font-size: 28px; font-weight: 700; color: #fff; }
     .header p { color: #4fa8ff; font-size: 15px; margin-top: 3px; }
     .card { background: #161b22; border-radius: 16px; overflow: hidden; border: 1px solid #21262d; }
-    .card-top { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #21262d; }
+    .card-top { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #21262d; min-height: 80px; }
     .card-brand { display: flex; align-items: center; gap: 10px; }
     .brand-icon { width: 32px; height: 32px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
     .brand-name { font-weight: 700; font-size: 14px; color: #fff; }
@@ -90,9 +90,10 @@
   <div class="card">
     <div class="card-top">
       <div class="card-brand">
-      <img src="logo.png" alt="ShopScan Pro" style="height:52px;width:auto;object-fit:contain;" />
+        <img src="logo.png" alt="ShopScan Pro" style="height:56px;width:auto;object-fit:contain;display:block;" />
+      </div>
       <div class="card-status">
-        <div class="shop" id="shop-display">—</div>
+        <div class="shop" id="shop-display"></div>
         <div class="done" id="status-display">Listo para escanear</div>
       </div>
     </div>
